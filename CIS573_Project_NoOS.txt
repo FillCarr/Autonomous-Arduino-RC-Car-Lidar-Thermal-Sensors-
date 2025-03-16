@@ -1,0 +1,153 @@
+#include <Arduino.h>
+#include <Adafruit_AMG88xx.h>
+#include <Wire.h>
+#include <TFLI2C.h>
+
+// AMG8833 Thermal Imager setup
+Adafruit_AMG88xx amg;
+const float temperatureThreshold = 45.0; // Temperature threshold in Celsius
+
+// TF-Luna LIDAR setup
+TFLI2C tflI2C;
+int16_t tfDist;
+int16_t tfAddr = TFL_DEF_ADR; // Default I2C address for TF-Luna
+const int distanceThreshold = 20; // Distance threshold in cm
+
+// Motor A pins
+const int dirA = 12;
+const int pwmA = 3;
+const int brakeA = 9;
+
+// Motor B pins
+const int dirB = 13;
+const int pwmB = 11;
+const int brakeB = 8;
+
+// Global variables for conditions
+bool fireDetected = false;
+bool closeObjectDetected = false;
+bool motorsRunning = false;
+
+// Timing variables
+unsigned long distanceLatency = 0;
+unsigned long temperatureLatency = 0;
+unsigned long motorControlLatency = 0;
+unsigned long totalLatency = 0;
+
+void setup() {
+    Serial.begin(115200);
+    Wire.begin();
+
+    // Initialize AMG8833
+    if (!amg.begin()) {
+        Serial.println("AMG8833 not found!");
+        while (1);
+    }
+
+    // Initialize motors
+    pinMode(dirA, OUTPUT);
+    pinMode(pwmA, OUTPUT);
+    pinMode(brakeA, OUTPUT);
+    pinMode(dirB, OUTPUT);
+    pinMode(pwmB, OUTPUT);
+    pinMode(brakeB, OUTPUT);
+}
+
+void loop() {
+    unsigned long startTime, endTime;
+
+    // Read distance task
+    startTime = millis();
+    readDistance();
+    endTime = millis();
+    distanceLatency = endTime - startTime;
+
+    // Read temperature task
+    startTime = millis();
+    readTemperature();
+    endTime = millis();
+    temperatureLatency = endTime - startTime;
+
+    // Motor control task
+    startTime = millis();
+    controlMotors();
+    endTime = millis();
+    motorControlLatency = endTime - startTime;
+
+    // Calculate total latency
+    totalLatency = distanceLatency + temperatureLatency + motorControlLatency;
+
+    // Print latency metrics
+    Serial.println("Task Latency Metrics:");
+    Serial.print("Distance Task Latency: ");
+    Serial.print(distanceLatency);
+    Serial.println(" ms");
+    Serial.print("Temperature Task Latency: ");
+    Serial.print(temperatureLatency);
+    Serial.println(" ms");
+    Serial.print("Motor Control Task Latency: ");
+    Serial.print(motorControlLatency);
+    Serial.println(" ms");
+    Serial.print("Total Task Latency: ");
+    Serial.print(totalLatency);
+    Serial.println(" ms");
+    Serial.println();
+
+    // Delay to simulate periodic execution
+    delay(100); // Adjust based on your testing needs
+}
+
+void readDistance() {
+    if (tflI2C.getData(tfDist, tfAddr)) {
+        closeObjectDetected = (tfDist <= distanceThreshold);
+    } else {
+        closeObjectDetected = false;
+    }
+}
+
+void readTemperature() {
+    float pixels[64];
+    amg.readPixels(pixels);
+    fireDetected = false;
+
+    for (int i = 0; i < 64; i++) {
+        if (pixels[i] >= temperatureThreshold) {
+            fireDetected = true;
+            break;
+        }
+    }
+}
+
+void controlMotors() {
+    if (fireDetected && !closeObjectDetected) {
+        if (!motorsRunning) {
+            runMotors();
+            motorsRunning = true;
+        }
+    } else {
+        if (motorsRunning) {
+            stopMotors();
+            motorsRunning = false;
+        }
+    }
+}
+
+void runMotors() {
+    Serial.println("Running motors...");
+    analogWrite(pwmA, 200);    // Motor A speed
+    digitalWrite(dirA, HIGH);  // Motor A direction
+    digitalWrite(brakeA, LOW); // Disable brake A
+
+    analogWrite(pwmB, 200);    // Motor B speed
+    digitalWrite(dirB, HIGH);  // Motor B direction
+    digitalWrite(brakeB, LOW); // Disable brake B
+}
+
+void stopMotors() {
+    Serial.println("Stopping motors...");
+    digitalWrite(brakeA, HIGH); // Enable brake A
+    analogWrite(pwmA, 0);       // Stop Motor A
+
+    digitalWrite(brakeB, HIGH); // Enable brake B
+    analogWrite(pwmB, 0);       // Stop Motor B
+}
