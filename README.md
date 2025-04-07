@@ -1,3 +1,5 @@
+https://youtu.be/-HH1z6eWJ-g?si=FbqcB-r_6L30N2_y
+
 Project Overview
 Goal: Develop an autonomous RC system capable of real-time obstacle detection and navigation using a combination of thermal imaging and LIDAR data.
 Platform: The microcontroller is programmed using Arduino language (C/C++), allowing direct control of the hardware.
